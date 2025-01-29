@@ -1,142 +1,160 @@
 import io
 import datetime
+import uuid
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import exifread
-import face_recognition
 import numpy as np
+import cv2  # OpenCV for face detection
 from sklearn.cluster import DBSCAN
 
 app = Flask(__name__)
+CORS(app)
 
-def date_to_days(dt):
-    """Convert datetime to days since epoch (1970-01-01)."""
-    if dt is None:
-        return 0
-    epoch = datetime.datetime(1970, 1, 1)
-    delta = dt - epoch
-    return delta.days + (delta.seconds / 86400.0)
+# Load OpenCV's pre-trained face detector
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
-def parse_exif_and_faces(file_storage):
+def parse_exif(file_bytes):
     """
-    1) Parse EXIF for date/time, latitude, longitude (demo approach: lat/lon = 0 if not found).
-    2) Detect faces (count) using face_recognition.
-    Returns dict with:
-      { 'datetime': datetime|None, 'lat': float, 'lon': float, 'faceCount': int }
+    Extract EXIF DateTimeOriginal, lat/lon.
     """
-    file_bytes = file_storage.read()
-    file_storage.seek(0)  # Reset pointer
-
-    # 1) EXIF
-    exif_tags = {}
+    dt_obj = None
+    lat, lon = 0.0, 0.0  # default
     try:
-        with io.BytesIO(file_bytes) as f:
-            exif_tags = exifread.process_file(f, details=False)
+        tags = exifread.process_file(io.BytesIO(file_bytes), details=False)
+        if "EXIF DateTimeOriginal" in tags:
+            dt_str = str(tags["EXIF DateTimeOriginal"])
+            try:
+                dt_obj = datetime.datetime.strptime(dt_str, "%Y:%m:%d %H:%M:%S")
+            except:
+                pass
     except:
         pass
+    return dt_obj, lat, lon
 
-    # Parse DateTimeOriginal
-    dt_obj = None
-    if "EXIF DateTimeOriginal" in exif_tags:
-        exif_date_str = str(exif_tags["EXIF DateTimeOriginal"])
-        try:
-            dt_obj = datetime.datetime.strptime(exif_date_str, "%Y:%m:%d %H:%M:%S")
-        except:
-            pass
+def date_to_days(dt):
+    """Convert datetime to float days since epoch."""
+    if not dt:
+        return 0.0
+    epoch = datetime.datetime(1970, 1, 1)
+    delta = dt - epoch
+    return delta.total_seconds() / 86400.0
 
-    # For demo, we won't parse real lat/lon from EXIF. We’ll just do lat=0, lon=0.
-    # You can parse them from exif_tags if needed:
-    lat = 0.0
-    lon = 0.0
+def detect_faces_opencv(file_bytes):
+    """
+    Detect faces using OpenCV.
+    Returns the number of detected faces.
+    """
+    # Convert file bytes to an OpenCV image
+    img_array = np.frombuffer(file_bytes, dtype=np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
 
-    # 2) Face detection
-    # load_image_file -> returns a numpy array (RGB)
-    img = face_recognition.load_image_file(io.BytesIO(file_bytes))
-    face_locations = face_recognition.face_locations(img)
-    face_count = len(face_locations)
+    if img is None:
+        return 0  # Image couldn't be loaded
 
-    return {
-        "datetime": dt_obj,
-        "lat": lat,
-        "lon": lon,
-        "faceCount": face_count
-    }
+    # Convert to grayscale (Haar cascades work better in grayscale)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Detect faces
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    return len(faces)  # Return the number of faces detected
 
 @app.route("/process", methods=["POST"])
 def process_images():
     """
-    Endpoint: POST multiple images as form-data: photos=<files[]>
-    1) Parse EXIF + face count
-    2) DBSCAN cluster
-    3) Return JSON with { nodes, links }
+    1. Receive multiple images via form-data: photos=<multiple files>
+    2. Extract EXIF metadata (date/time).
+    3. Detect faces using OpenCV.
+    4. Cluster them (DBSCAN or another method).
+    5. Return JSON with clusters.
     """
     files = request.files.getlist("photos")
     if not files:
-        return jsonify({"error": "No files received"}), 400
+        return jsonify({"error": "No files uploaded"}), 400
 
-    # Collect data
-    data_list = []
-    for idx, file_storage in enumerate(files):
-        result = parse_exif_and_faces(file_storage)
-        data_list.append({
-            "index": idx,
-            "filename": file_storage.filename,
-            "datetime": result["datetime"],
-            "lat": result["lat"],
-            "lon": result["lon"],
-            "faceCount": result["faceCount"],
+    # Step 1: Extract features from each photo
+    photo_data = []
+    for idx, f in enumerate(files):
+        file_bytes = f.read()
+        f.seek(0)  # Reset pointer for further reads if needed
+
+        # EXIF
+        dt_obj, lat, lon = parse_exif(file_bytes)
+
+        # Face detection using OpenCV
+        face_count = detect_faces_opencv(file_bytes)
+
+        photo_data.append({
+            "id": str(uuid.uuid4()),
+            "filename": f.filename,
+            "datetime": dt_obj,
+            "daysSinceEpoch": date_to_days(dt_obj),
+            "lat": lat,
+            "lon": lon,
+            "faceCount": face_count
         })
 
-    # Build features: [daysSinceEpoch, lat, lon, faceCount]
-    feature_array = []
-    for item in data_list:
-        days = date_to_days(item["datetime"]) if item["datetime"] else 0
-        feature_array.append([days, item["lat"], item["lon"], item["faceCount"]])
-    feature_array = np.array(feature_array)
+    # Step 2: Cluster images based on time, GPS, and face count
+    X = []
+    for p in photo_data:
+        X.append([p["daysSinceEpoch"], p["lat"], p["lon"], p["faceCount"]])
+    X = np.array(X)
 
-    # Run DBSCAN
-    if len(feature_array) > 0:
-        dbscan = DBSCAN(eps=10, min_samples=2)
-        labels = dbscan.fit_predict(feature_array)
+    if len(X) < 2:
+        # Not enough data to cluster meaningfully
+        labels = np.array([-1] * len(X))
     else:
-        labels = []
+        dbscan = DBSCAN(eps=10.0, min_samples=2)
+        labels = dbscan.fit_predict(X)
 
-    # Build nodes
+    # Step 3: Build a nodes/links structure
     nodes = []
-    for i, item in enumerate(data_list):
+    cluster_map = {}
+    for i, p in enumerate(photo_data):
         nodes.append({
-            "id": str(i),
-            "filename": item["filename"],
+            "id": p["id"],
+            "filename": p["filename"],
             "cluster": int(labels[i]),
-            "faceCount": item["faceCount"],
-            "lat": item["lat"],
-            "lon": item["lon"],
-            "dateTime": item["datetime"].isoformat() if item["datetime"] else None
+            "faceCount": p["faceCount"],
+            "dateTime": p["datetime"].isoformat() if p["datetime"] else None,
+            "lat": p["lat"],
+            "lon": p["lon"]
         })
 
-    # Build cluster -> indices
-    clusters = {}
-    for i, label in enumerate(labels):
-        if label not in clusters:
-            clusters[label] = []
-        clusters[label].append(i)
+        if labels[i] not in cluster_map:
+            cluster_map[labels[i]] = []
+        cluster_map[labels[i]].append(i)
 
-    # Build links in each cluster
+    # Step 4: Build links (connect items in the same cluster)
     links = []
-    for label, indices in clusters.items():
-        # label == -1 => outlier/noise in DBSCAN, skip linking
-        if label == -1:
+    for label, idx_list in cluster_map.items():
+        if label == -1:  # Outliers/noise
             continue
-        indices.sort()
-        for j in range(len(indices) - 1):
+        idx_list.sort()
+        for j in range(len(idx_list) - 1):
+            source_idx = idx_list[j]
+            target_idx = idx_list[j + 1]
             links.append({
-                "source": str(indices[j]),
-                "target": str(indices[j+1])
+                "source": photo_data[source_idx]["id"],
+                "target": photo_data[target_idx]["id"]
             })
 
-    return jsonify({
-        "nodes": nodes,
-        "links": links
-    })
+    # Prepare JSON response
+    result = {
+        "levels": [
+            {
+                "level": 0,
+                "nodes": nodes,
+                "links": links
+            }
+        ]
+    }
+    return jsonify(result)
+
+@app.route("/")
+def hello():
+    return "Backend for Photo Clustering with OpenCV."
 
 if __name__ == "__main__":
     app.run(port=5000, debug=True)
