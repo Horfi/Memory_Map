@@ -1,42 +1,132 @@
+/* src/App.css */
+
+:root {
+  --primary-color: #61dafb;
+  --secondary-color: #21a1f1;
+  --background-color: #1e1e2f;
+  --upload-bg: #2e2e3e;
+  --text-color: #ffffff;
+  --border-color: #61dafb;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
 #root {
-  max-width: 1280px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+header {
+  margin-bottom: 2rem;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
+}
+
+p.status {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  color: #f0f0f0;
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: row; /* Align items horizontally */
+  align-items: center;
+  justify-content: center; /* Center items horizontally */
+  margin-bottom: 2rem;
+  gap: 10px; /* Space between elements */
+}
+
+.upload-section input[type="file"] {
+  display: none; /* Hide the default file input */
+}
+
+.custom-file-upload {
+  display: flex;
+  align-items: center;
+  padding: 0.7rem 1.5rem;
+  font-size: 1rem;
+  color: var(--text-color);
+  background-color: var(--primary-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.custom-file-upload:hover {
+  background-color: var(--secondary-color);
+  transform: translateY(-2px);
+}
+
+.custom-file-upload:active {
+  transform: translateY(0);
+}
+
+.upload-section button {
+  padding: 0.7rem 1.5rem;
+  font-size: 1rem;
+  color: var(--text-color);
+  background-color: var(--primary-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.upload-section button:hover {
+  background-color: var(--secondary-color);
+  transform: translateY(-2px);
+}
+
+.upload-section button:active {
+  transform: translateY(0);
+}
+
+.loading-spinner {
+  margin-top: 20px;
+  font-size: 1.2rem;
+  color: var(--primary-color);
+}
+
+.graph-container {
+  width: 100%;
+  height: 80vh;
+  border: 2px solid var(--primary-color);
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #101020;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.node-label {
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+@media (max-width: 768px) {
+  h1 {
+    font-size: 2rem;
   }
-  to {
-    transform: rotate(360deg);
+
+  .upload-section {
+    flex-direction: column; /* Stack vertically on small screens */
+    width: 90%;
   }
-}
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+  .graph-container {
+    height: 60vh;
   }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
 }
