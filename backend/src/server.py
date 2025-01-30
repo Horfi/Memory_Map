@@ -1,7 +1,8 @@
 import io
 import datetime
 import uuid
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import exifread
 import numpy as np
@@ -10,6 +11,11 @@ from sklearn.cluster import DBSCAN
 
 app = Flask(__name__)
 CORS(app)
+
+# Define the upload folder
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 # Load OpenCV's pre-trained face detector
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -67,7 +73,7 @@ def process_images():
     2. Extract EXIF metadata (date/time).
     3. Detect faces using OpenCV.
     4. Cluster them (DBSCAN or another method).
-    5. Return JSON with clusters.
+    5. Return JSON with clusters, including image URLs.
     """
     files = request.files.getlist("photos")
     if not files:
@@ -85,6 +91,14 @@ def process_images():
         # Face detection using OpenCV
         face_count = detect_faces_opencv(file_bytes)
 
+        # Save the image to upload folder with a unique filename
+        unique_filename = f"{uuid.uuid4()}_{f.filename}"
+        save_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+        f.save(save_path)
+
+        # Generate image URL
+        image_url = request.host_url + 'uploads/' + unique_filename
+
         photo_data.append({
             "id": str(uuid.uuid4()),
             "filename": f.filename,
@@ -92,7 +106,8 @@ def process_images():
             "daysSinceEpoch": date_to_days(dt_obj),
             "lat": lat,
             "lon": lon,
-            "faceCount": face_count
+            "faceCount": face_count,
+            "imageUrl": image_url  # Include image URL
         })
 
     # Step 2: Cluster images based on time, GPS, and face count
@@ -101,56 +116,67 @@ def process_images():
         X.append([p["daysSinceEpoch"], p["lat"], p["lon"], p["faceCount"]])
     X = np.array(X)
 
-    if len(X) < 2:
-        # Not enough data to cluster meaningfully
-        labels = np.array([-1] * len(X))
-    else:
-        dbscan = DBSCAN(eps=10.0, min_samples=2)
-        labels = dbscan.fit_predict(X)
+    # Define multiple eps values for different levels
+    eps_values = [10.0, 20.0, 30.0]  # Example values for different zoom levels
+    levels = []
 
-    # Step 3: Build a nodes/links structure
-    nodes = []
-    cluster_map = {}
-    for i, p in enumerate(photo_data):
-        nodes.append({
-            "id": p["id"],
-            "filename": p["filename"],
-            "cluster": int(labels[i]),
-            "faceCount": p["faceCount"],
-            "dateTime": p["datetime"].isoformat() if p["datetime"] else None,
-            "lat": p["lat"],
-            "lon": p["lon"]
-        })
+    for lvl, eps in enumerate(eps_values):
+        if len(X) < 2:
+            # Not enough data to cluster meaningfully
+            labels = np.array([-1] * len(X))
+        else:
+            dbscan = DBSCAN(eps=eps, min_samples=2)
+            labels = dbscan.fit_predict(X)
 
-        if labels[i] not in cluster_map:
-            cluster_map[labels[i]] = []
-        cluster_map[labels[i]].append(i)
-
-    # Step 4: Build links (connect items in the same cluster)
-    links = []
-    for label, idx_list in cluster_map.items():
-        if label == -1:  # Outliers/noise
-            continue
-        idx_list.sort()
-        for j in range(len(idx_list) - 1):
-            source_idx = idx_list[j]
-            target_idx = idx_list[j + 1]
-            links.append({
-                "source": photo_data[source_idx]["id"],
-                "target": photo_data[target_idx]["id"]
+        # Step 3: Build a nodes/links structure for the current level
+        nodes = []
+        cluster_map = {}
+        for i, p in enumerate(photo_data):
+            nodes.append({
+                "id": p["id"],
+                "filename": p["filename"],
+                "cluster": int(labels[i]),
+                "faceCount": p["faceCount"],
+                "dateTime": p["datetime"].isoformat() if p["datetime"] else None,
+                "lat": p["lat"],
+                "lon": p["lon"],
+                "imageUrl": p["imageUrl"]  # Include image URL
             })
+
+            if labels[i] not in cluster_map:
+                cluster_map[labels[i]] = []
+            cluster_map[labels[i]].append(i)
+
+        # Step 4: Build links (connect items in the same cluster)
+        links = []
+        for label, idx_list in cluster_map.items():
+            if label == -1:  # Outliers/noise
+                continue
+            idx_list.sort()
+            for j in range(len(idx_list) - 1):
+                source_idx = idx_list[j]
+                target_idx = idx_list[j + 1]
+                links.append({
+                    "source": photo_data[source_idx]["id"],
+                    "target": photo_data[target_idx]["id"]
+                })
+
+        levels.append({
+            "level": lvl,
+            "nodes": nodes,
+            "links": links
+        })
 
     # Prepare JSON response
     result = {
-        "levels": [
-            {
-                "level": 0,
-                "nodes": nodes,
-                "links": links
-            }
-        ]
+        "levels": levels
     }
     return jsonify(result)
+
+# Serve the uploaded images
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route("/")
 def hello():
