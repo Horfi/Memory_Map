@@ -1,9 +1,8 @@
-// src/App.jsx
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { ForceGraph3D } from "react-force-graph";
-import * as THREE from 'three'; // Import THREE for textures
-import "./App.css"; // Ensure this path is correct
+import * as THREE from 'three'; // for texture loading
+import "./App.css";
 
 function App() {
   const [files, setFiles] = useState([]);
@@ -14,10 +13,10 @@ function App() {
 
   const graphRef = useRef();
 
-  // Center the graph whenever levelsData or currentLevel changes
+  // Auto-fit the graph whenever we get new data or change level
   useEffect(() => {
     if (graphRef.current && levelsData) {
-      graphRef.current.zoomToFit(400); // Duration in ms
+      graphRef.current.zoomToFit(400); // 400 ms animation
     }
   }, [levelsData, currentLevel]);
 
@@ -31,12 +30,13 @@ function App() {
       return;
     }
     setStatus("Uploading & Processing...");
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
 
     try {
       const formData = new FormData();
       files.forEach((f) => formData.append("photos", f));
 
+      // POST to the Flask server on port 5000
       const res = await axios.post("http://localhost:5000/process", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -46,44 +46,50 @@ function App() {
         return;
       }
       setLevelsData(res.data.levels);
-      setStatus("Got cluster data from server.");
+      setStatus("Got cluster data from server!");
     } catch (err) {
       console.error(err);
       setStatus("Upload/Processing failed: " + err.message);
     } finally {
-      setIsLoading(false); // Stop loading
+      setIsLoading(false);
     }
   };
 
-  const currentGraph = levelsData ? levelsData[currentLevel] : { nodes: [], links: [] };
+  // Decide which level to show
+  const currentGraph = levelsData
+    ? levelsData[currentLevel]
+    : { nodes: [], links: [] };
 
-  // Function to create a node with image texture
+  // Turn each node into a sprite with its photo
   const nodeThreeObject = (node) => {
-    // Create a sprite material with the image texture
     const imgTexture = new THREE.TextureLoader().load(node.imageUrl);
     const spriteMaterial = new THREE.SpriteMaterial({ map: imgTexture });
-
     const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.scale.set(20, 20, 1); // Adjust size as needed
-
+    // Scale up or down as needed
+    sprite.scale.set(20, 20, 1);
     return sprite;
   };
 
-  // Function to handle node click to focus
+  // Center and zoom on click
   const handleNodeClick = (node) => {
-    // Center the graph on the clicked node
-    graphRef.current.centerAt(node.x, node.y, node.z, 1000); // duration 1000ms
-    graphRef.current.zoom(8, 1000); // adjust zoom level and duration
+    if (!graphRef.current) return;
+    graphRef.current.centerAt(node.x, node.y, node.z, 1000);
+    graphRef.current.zoom(8, 1000);
   };
 
-  // Function to handle zoom and switch levels
+  // Example zoom logic to switch levels
   const handleZoom = (currZoom) => {
-    // Define zoom thresholds and corresponding levels
+    if (!levelsData) return;
+    // If zoom is large, show finer clusters (level 0)
     if (currZoom > 8 && currentLevel !== 0) {
       setCurrentLevel(0);
-    } else if (currZoom > 4 && currentLevel !== 1) {
+    }
+    // If zoom is medium, show next level
+    else if (currZoom > 4 && currentLevel !== 1) {
       setCurrentLevel(1);
-    } else if (currentLevel !== 2) {
+    }
+    // Else show the coarsest level
+    else if (currentLevel !== 2) {
       setCurrentLevel(2);
     }
   };
@@ -96,7 +102,7 @@ function App() {
       </header>
 
       <section className="upload-section">
-        {/* Hidden File Input */}
+        {/* Hidden file input */}
         <input
           type="file"
           id="file-upload"
@@ -104,17 +110,15 @@ function App() {
           onChange={handleFileChange}
           className="file-input"
         />
-
-        {/* Styled Label Acting as Button */}
         <label htmlFor="file-upload" className="custom-file-upload">
           Choose Files
         </label>
 
-        {/* Process/Cluster Button */}
+        {/* Button to upload/process */}
         <button onClick={handleUpload}>Process/Cluster</button>
       </section>
 
-      {/* Loading Indicator */}
+      {/* Loading spinner if needed */}
       {isLoading && (
         <div className="loading-spinner">
           <div className="spinner"></div>
@@ -122,33 +126,23 @@ function App() {
         </div>
       )}
 
-      {/* 3D Graph Visualization */}
+      {/* Render 3D graph once we have data */}
       {levelsData && (
         <section className="graph-container">
           <ForceGraph3D
             ref={graphRef}
             graphData={currentGraph}
             nodeAutoColorBy="cluster"
-            nodeThreeObject={nodeThreeObject} // Use custom node object
-            nodeLabel={(node) => {
-              const n = node;
-              return `
-                <div style="text-align: center;">
-                  <img src="${n.imageUrl}" alt="${n.filename}" style="width: 100px; height: auto;" />
-                  <p>${n.filename}</p>
-                  <p>Cluster: ${n.cluster}</p>
-                  <p>Faces: ${n.faceCount}</p>
-                  <p>Time: ${n.dateTime || "N/A"}</p>
-                </div>
-              `;
-            }}
+            nodeThreeObject={nodeThreeObject}
+            // For a tooltip, we can return a simple string:
+            nodeLabel={(node) => `${node.filename} (Faces: ${node.faceCount})`}
             linkColor={() => "rgba(255,255,255,0.5)"}
             backgroundColor="#101020"
-            onNodeClick={handleNodeClick} // Handle node click to focus
-            onZoom={handleZoom} // Handle zoom to switch levels
-            enableNodeDrag={true} // Enable node dragging
-            linkDirectionalArrowLength={5} // Optional: add arrows to links
-            linkDirectionalArrowRelPos={1} // Optional: position arrows
+            onNodeClick={handleNodeClick}
+            onZoom={handleZoom}
+            enableNodeDrag={true}
+            linkDirectionalArrowLength={5}
+            linkDirectionalArrowRelPos={1}
           />
         </section>
       )}
