@@ -6,26 +6,26 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import exifread
 import numpy as np
-import cv2  # OpenCV for face detection
+import cv2
 from sklearn.cluster import DBSCAN
 
 app = Flask(__name__)
 CORS(app)
 
-# Define the upload folder
-UPLOAD_FOLDER = 'uploads'
+# Absolute path to 'uploads' inside the container
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# Load OpenCV's pre-trained face detector
+# Load OpenCV face detector
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 def parse_exif(file_bytes):
     """
-    Extract EXIF DateTimeOriginal, lat/lon.
+    Extract EXIF DateTimeOriginal (and lat/lon if needed).
     """
     dt_obj = None
-    lat, lon = 0.0, 0.0  # default
+    lat, lon = 0.0, 0.0
     try:
         tags = exifread.process_file(io.BytesIO(file_bytes), details=False)
         if "EXIF DateTimeOriginal" in tags:
@@ -51,53 +51,43 @@ def detect_faces_opencv(file_bytes):
     Detect faces using OpenCV.
     Returns the number of detected faces.
     """
-    # Convert file bytes to an OpenCV image
     img_array = np.frombuffer(file_bytes, dtype=np.uint8)
     img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-
     if img is None:
-        return 0  # Image couldn't be loaded
+        return 0
 
-    # Convert to grayscale (Haar cascades work better in grayscale)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Detect faces
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-
-    return len(faces)  # Return the number of faces detected
+    return len(faces)
 
 @app.route("/process", methods=["POST"])
 def process_images():
     """
-    1. Receive multiple images via form-data: photos=<multiple files>
-    2. Extract EXIF metadata (date/time).
-    3. Detect faces using OpenCV.
-    4. Cluster them (DBSCAN or another method).
-    5. Return JSON with clusters, including image URLs.
+    1. Receive multiple images
+    2. Extract EXIF metadata (date/time)
+    3. Detect faces
+    4. Cluster them
+    5. Return JSON with clusters + image URLs
     """
     files = request.files.getlist("photos")
     if not files:
         return jsonify({"error": "No files uploaded"}), 400
 
-    # Step 1: Extract features from each photo
     photo_data = []
-    for idx, f in enumerate(files):
+    for f in files:
         file_bytes = f.read()
-        f.seek(0)  # Reset pointer for further reads if needed
+        f.seek(0)
 
-        # EXIF
         dt_obj, lat, lon = parse_exif(file_bytes)
-
-        # Face detection using OpenCV
         face_count = detect_faces_opencv(file_bytes)
 
-        # Save the image to upload folder with a unique filename
+        # Save the image to 'uploads' with a unique filename
         unique_filename = f"{uuid.uuid4()}_{f.filename}"
         save_path = os.path.join(UPLOAD_FOLDER, unique_filename)
         f.save(save_path)
 
-        # Generate image URL
-        image_url = request.host_url + 'uploads/' + unique_filename
+        # Image will be served by Flask on port 5000
+        image_url = f"http://localhost:5000/uploads/{unique_filename}"
 
         photo_data.append({
             "id": str(uuid.uuid4()),
@@ -107,32 +97,30 @@ def process_images():
             "lat": lat,
             "lon": lon,
             "faceCount": face_count,
-            "imageUrl": image_url  # Include image URL
+            "imageUrl": image_url
         })
 
-    # Step 2: Cluster images based on time, GPS, and face count
-    X = []
-    for p in photo_data:
-        X.append([p["daysSinceEpoch"], p["lat"], p["lon"], p["faceCount"]])
-    X = np.array(X)
+    # Cluster
+    X = np.array([
+        [p["daysSinceEpoch"], p["lat"], p["lon"], p["faceCount"]]
+        for p in photo_data
+    ])
 
-    # Define multiple eps values for different levels
-    eps_values = [10.0, 20.0, 30.0]  # Example values for different zoom levels
+    eps_values = [10.0, 20.0, 30.0]  # example thresholds
     levels = []
 
     for lvl, eps in enumerate(eps_values):
         if len(X) < 2:
-            # Not enough data to cluster meaningfully
-            labels = np.array([-1] * len(X))
+            # Not enough data
+            labels = np.array([-1]*len(X))
         else:
             dbscan = DBSCAN(eps=eps, min_samples=2)
             labels = dbscan.fit_predict(X)
 
-        # Step 3: Build a nodes/links structure for the current level
         nodes = []
         cluster_map = {}
         for i, p in enumerate(photo_data):
-            nodes.append({
+            node_data = {
                 "id": p["id"],
                 "filename": p["filename"],
                 "cluster": int(labels[i]),
@@ -140,18 +128,15 @@ def process_images():
                 "dateTime": p["datetime"].isoformat() if p["datetime"] else None,
                 "lat": p["lat"],
                 "lon": p["lon"],
-                "imageUrl": p["imageUrl"]  # Include image URL
-            })
+                "imageUrl": p["imageUrl"]
+            }
+            nodes.append(node_data)
+            cluster_map.setdefault(labels[i], []).append(i)
 
-            if labels[i] not in cluster_map:
-                cluster_map[labels[i]] = []
-            cluster_map[labels[i]].append(i)
-
-        # Step 4: Build links (connect items in the same cluster)
         links = []
         for label, idx_list in cluster_map.items():
-            if label == -1:  # Outliers/noise
-                continue
+            if label == -1:
+                continue  # outliers
             idx_list.sort()
             for j in range(len(idx_list) - 1):
                 source_idx = idx_list[j]
@@ -167,15 +152,13 @@ def process_images():
             "links": links
         })
 
-    # Prepare JSON response
-    result = {
-        "levels": levels
-    }
-    return jsonify(result)
+    return jsonify({"levels": levels})
 
-# Serve the uploaded images
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
+    """
+    Serve the uploaded images from the 'uploads' folder.
+    """
     return send_from_directory(UPLOAD_FOLDER, filename)
 
 @app.route("/")
@@ -183,4 +166,5 @@ def hello():
     return "Backend for Photo Clustering with OpenCV."
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    # Make sure to listen on 0.0.0.0 so Docker can expose it
+    app.run(host="0.0.0.0", port=5000, debug=True)
