@@ -18,4 +18,4 @@ still work in progress
 
   to run frontend:
   cd frontend
-  npm run dev
+  npm run dev.
