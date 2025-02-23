@@ -94,32 +94,36 @@ def detect_faces_opencv(file_bytes):
 
 @app.route("/process", methods=["POST"])
 def process_images():
-    # 1) Collect user-uploaded files
-    user_files = request.files.getlist("photos")
+    """
+    Process multiple images from user-uploaded files and/or prepared photos:
+    1. Extract EXIF metadata (date/time and GPS)
+    2. Detect faces
+    3. Cluster based on date, location, and face count
+    4. Return JSON with cluster levels, nodes, and links
+    """
+    files = request.files.getlist("photos")
+    prep_photos = request.form.getlist("prepPhotos")  # get list of prep photo filenames
 
-    # 2) Collect references to pre-existing files in prepPhotos
-    prep_photos = request.form.getlist("prepPhotos")
-
-    # If the user didn't select local files or prepPhotos, error out
-    if not user_files and not prep_photos:
-        return jsonify({"error": "No images or references selected"}), 400
+    # If neither uploaded files nor prep photos are provided, return error
+    if not files and not prep_photos:
+        return jsonify({"error": "No files or prepared photos selected"}), 400
 
     photo_data = []
 
-    # --- A) Handle user-uploaded files ---
-    for f in user_files:
+    # Process user-uploaded files (if any)
+    for f in files:
         file_bytes = f.read()
         f.seek(0)
 
         dt_obj, lat, lon = parse_exif(file_bytes)
         face_count = detect_faces_opencv(file_bytes)
 
-        # Save the uploaded image to 'uploads' with a unique name
+        # Save the image to 'uploads' with a unique filename
         unique_filename = f"{uuid.uuid4()}_{f.filename}"
         save_path = os.path.join(UPLOAD_FOLDER, unique_filename)
         f.save(save_path)
 
-        # Relative URL for the saved image
+        # Use a relative URL for the saved image from the uploads folder
         relative_url = f"/uploads/{unique_filename}"
 
         photo_data.append({
@@ -133,48 +137,37 @@ def process_images():
             "imageUrl": relative_url
         })
 
-    # --- B) Handle references to prepPhotos folder ---
-    prep_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prepPhotos')
-    for prep_filename in prep_photos:
-        # e.g. "myphoto.jpg"
-        full_path = os.path.join(prep_folder, prep_filename)
+    # Process prepared photos if provided (use them directly from the prepPhotos folder)
+    if prep_photos:
+        prep_folder = os.path.join(os.getcwd(), "prepPhotos")
+        for filename in prep_photos:
+            file_path = os.path.join(prep_folder, filename)
+            if not os.path.exists(file_path):
+                continue
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+            dt_obj, lat, lon = parse_exif(file_bytes)
+            face_count = detect_faces_opencv(file_bytes)
+            # Directly use the prepPhotos route for displaying the image
+            relative_url = f"/prepPhotos/{filename}"
+            photo_data.append({
+                "id": str(uuid.uuid4()),
+                "filename": filename,
+                "datetime": dt_obj,
+                "daysSinceEpoch": date_to_days(dt_obj),
+                "lat": lat,
+                "lon": lon,
+                "faceCount": face_count,
+                "imageUrl": relative_url
+            })
 
-        if not os.path.isfile(full_path):
-            # skip if doesn't exist
-            continue
-
-        with open(full_path, "rb") as fp:
-            file_bytes = fp.read()
-
-        dt_obj, lat, lon = parse_exif(file_bytes)
-        face_count = detect_faces_opencv(file_bytes)
-
-        # We won't "save" these to uploads again since they're already on disk.
-        # Instead, we create an imageUrl that points to /prepPhotos/<filename>
-        relative_url = f"/prepPhotos/{prep_filename}"
-
-        photo_data.append({
-            "id": str(uuid.uuid4()),
-            "filename": prep_filename,
-            "datetime": dt_obj,
-            "daysSinceEpoch": date_to_days(dt_obj),
-            "lat": lat,
-            "lon": lon,
-            "faceCount": face_count,
-            "imageUrl": relative_url
-        })
-
-    # --- C) Cluster all images (user + prep) together ---
-    if len(photo_data) == 0:
-        return jsonify({"error": "No valid photos found."}), 400
-
-    # Convert to a matrix for DBSCAN
+    # Prepare data for clustering
     X = np.array([
         [p["daysSinceEpoch"], p["lat"], p["lon"], p["faceCount"]]
         for p in photo_data
     ])
 
-    eps_values = [10.0, 20.0, 30.0]
+    eps_values = [10.0, 20.0, 30.0]  # example thresholds for DBSCAN
     levels = []
 
     for lvl, eps in enumerate(eps_values):
@@ -203,7 +196,7 @@ def process_images():
         links = []
         for label, idx_list in cluster_map.items():
             if label == -1:
-                continue
+                continue  # skip outliers
             idx_list.sort()
             for j in range(len(idx_list) - 1):
                 source_idx = idx_list[j]
@@ -220,6 +213,7 @@ def process_images():
         })
 
     return jsonify({"levels": levels})
+
 
 
 @app.route('/uploads/<path:filename>')
