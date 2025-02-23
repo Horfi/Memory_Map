@@ -1,0 +1,112 @@
+/* The outer container that wraps the entire "Prepared Photos" section */
+.prep-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+    text-align: center;
+    /* We assume body is already using var(--background-color),
+       so no extra background needed here unless you want it. */
+  }
+  
+  /* Heading styling to match the "Photo Cluster 3D Demo" style */
+  .prep-container h2 {
+    font-size: 2.5rem;             /* match your main heading size */
+    margin-bottom: 1rem;
+    color: var(--primary-color);   /* same accent color */
+  }
+  
+  /* Optional subtitle styling */
+  .prep-subtitle {
+    margin-bottom: 2rem;
+    color: #ccc;
+    font-size: 1rem;
+  }
+  
+  /* The button group for Select All / Clear All */
+  .prep-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  /* Match the style of .upload-section button from App.css */
+  .prep-btn,
+  .prep-confirm-btn {
+    padding: 0.7rem 1.5rem;
+    font-size: 1rem;
+    color: var(--text-color);
+    background-color: var(--primary-color);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+  }
+  
+  .prep-btn:hover,
+  .prep-confirm-btn:hover {
+    background-color: var(--secondary-color);
+    transform: translateY(-2px);
+  }
+  
+  .prep-btn:active,
+  .prep-confirm-btn:active {
+    transform: translateY(0);
+  }
+  
+  /* The grid of photos */
+  .prep-photos-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center; /* center them in the row */
+    gap: 14px;
+    margin-bottom: 1rem;
+  }
+  
+  /* Each photo wrapper for optional hover effect */
+  .prep-photo-wrapper {
+    position: relative;
+    transition: transform 0.2s ease;
+  }
+  
+  /* Subtle zoom on hover */
+  .prep-photo-wrapper:hover {
+    transform: scale(1.03);
+  }
+  
+/* Unselected photos: white border (same as previous version) */
+.prep-photo {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    /* White border for unselected */
+    border: 2px solid #fff; 
+    cursor: pointer;
+    transition: border 0.2s ease;
+    border-radius: 4px; /* optional rounding */
+  }
+  
+  .prep-photo.selected {
+    /* Purple border for selected (same as your heading color, e.g. #a020f0) */
+    border: 2px solid #7a54ff;
+  }
+  
+  
+  
+  /* Confirm button at the bottom (make it stand out if you want) */
+  .prep-confirm-btn {
+    margin-top: 2rem;
+    font-size: 1.1rem;
+  }
+  
+  /* Media query for smaller screens */
+  @media (max-width: 768px) {
+    .prep-container h2 {
+      font-size: 2rem;
+    }
+    .prep-photos-grid {
+      gap: 10px;
+    }
+  }
+  

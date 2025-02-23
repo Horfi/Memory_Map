@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import "./PrepPhotosPage.css"; // <--- We'll reference this CSS
 
 function PrepPhotosPage({ selectedPrepPhotos, setSelectedPrepPhotos }) {
   const [prepPhotos, setPrepPhotos] = useState([]);
@@ -27,13 +28,10 @@ function PrepPhotosPage({ selectedPrepPhotos, setSelectedPrepPhotos }) {
     }
   };
 
-  // Select All
   const handleSelectAll = () => {
-    // If you want to select *every* photo from the list:
     setSelectedPrepPhotos(prepPhotos);
   };
 
-  // Clear All
   const handleClearAll = () => {
     setSelectedPrepPhotos([]);
   };
@@ -43,35 +41,28 @@ function PrepPhotosPage({ selectedPrepPhotos, setSelectedPrepPhotos }) {
   };
 
   return (
-    <div style={{ padding: "1rem" }}>
+    <div className="prep-container">
       <h2>Select from Prepared Photos</h2>
-      <p>Click images to toggle selection.</p>
+      <p className="prep-subtitle">Click images to toggle selection.</p>
 
-      {/* The new buttons */}
-      <div style={{ marginBottom: "1rem" }}>
-        <button onClick={handleSelectAll} style={{ marginRight: "1rem" }}>
+      <div className="prep-controls">
+        <button className="prep-btn" onClick={handleSelectAll}>
           Select All
         </button>
-        <button onClick={handleClearAll}>Clear All</button>
+        <button className="prep-btn" onClick={handleClearAll}>
+          Clear All
+        </button>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap" }}>
+      <div className="prep-photos-grid">
         {prepPhotos.map((photo) => {
           const isSelected = selectedPrepPhotos.includes(photo);
           return (
-            <div key={photo} style={{ margin: "8px" }}>
+            <div key={photo} className="prep-photo-wrapper">
               <img
-                src={`${
-                  import.meta.env.VITE_REACT_APP_API_URL || "http://localhost:5000"
-                }/prepPhotos/${photo}`}
+                src={`${import.meta.env.VITE_REACT_APP_API_URL || "http://localhost:5000"}/prepPhotos/${photo}`}
                 alt={photo}
-                style={{
-                  width: 120,
-                  height: 120,
-                  objectFit: "cover",
-                  border: isSelected ? "3px solid green" : "1px solid #ccc",
-                  cursor: "pointer",
-                }}
+                className={`prep-photo ${isSelected ? "selected" : ""}`}
                 onClick={() => togglePhotoSelection(photo)}
               />
             </div>
@@ -79,7 +70,7 @@ function PrepPhotosPage({ selectedPrepPhotos, setSelectedPrepPhotos }) {
         })}
       </div>
 
-      <button onClick={handleConfirm} style={{ marginTop: "1rem" }}>
+      <button className="prep-confirm-btn" onClick={handleConfirm}>
         Confirm Selection
       </button>
     </div>
