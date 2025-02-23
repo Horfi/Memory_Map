@@ -129,4 +129,31 @@ p.status {
   .graph-container {
     height: 60vh;
   }
+  .graph-container {
+    position: relative;
+    width: 100%;
+    /* A fixed height or dynamic. Example: fill viewport minus some offset. */
+    height: calc(100vh - 200px);
+    margin: 0 auto;
+    overflow: hidden; /* to prevent scrollbars if you want */
+  }
+  
+  /* The fullscreen button in the top-right corner */
+  .fullscreen-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 9999;
+    background-color: #333;
+    color: #fff;
+    border: none;
+    padding: 6px 10px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  
+  .fullscreen-btn:hover {
+    background-color: #555;
+  }
+  
 }
