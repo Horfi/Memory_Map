@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { ForceGraph3D } from "react-force-graph";
-import * as THREE from 'three'; // for texture loading
+import * as THREE from "three"; // for texture loading
 import "./App.css";
 
 function App() {
@@ -10,13 +10,12 @@ function App() {
   const [currentLevel, setCurrentLevel] = useState(0);
   const [status, setStatus] = useState("Idle");
   const [isLoading, setIsLoading] = useState(false);
-
   const graphRef = useRef();
 
   // Auto-fit the graph whenever we get new data or change level
   useEffect(() => {
     if (graphRef.current && levelsData) {
-      graphRef.current.zoomToFit(400); // 400 ms animation
+      graphRef.current.zoomToFit(400);
     }
   }, [levelsData, currentLevel]);
 
@@ -36,8 +35,11 @@ function App() {
       const formData = new FormData();
       files.forEach((f) => formData.append("photos", f));
 
-      // POST to the Flask server on port 5000
-      const res = await axios.post("http://localhost:5000/process", formData, {
+      // Use the backend API URL, defaulting to your Azure endpoint if not set.
+      const apiUrl = import.meta.env.VITE_REACT_APP_API_URL || "https://backend.icydesert-7cf8a089.polandcentral.azurecontainerapps.io";
+      
+      // Post the form data to the backend /process endpoint.
+      const res = await axios.post(`${apiUrl}/process`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -56,16 +58,18 @@ function App() {
   };
 
   // Decide which level to show
-  const currentGraph = levelsData
-    ? levelsData[currentLevel]
-    : { nodes: [], links: [] };
+  const currentGraph = levelsData ? levelsData[currentLevel] : { nodes: [], links: [] };
 
-  // Turn each node into a sprite with its photo
+  // Turn each node into a sprite with its photo.
+  // Here we prepend the backend URL to the relative image URL.
   const nodeThreeObject = (node) => {
-    const imgTexture = new THREE.TextureLoader().load(node.imageUrl);
+    // Use the same apiUrl as used in handleUpload (for consistency)
+    const apiUrl = import.meta.env.VITE_REACT_APP_API_URL || "https://backend.icydesert-7cf8a089.polandcentral.azurecontainerapps.io";
+    const fullImageUrl = new URL(node.imageUrl, apiUrl).href;
+
+    const imgTexture = new THREE.TextureLoader().load(fullImageUrl);
     const spriteMaterial = new THREE.SpriteMaterial({ map: imgTexture });
     const sprite = new THREE.Sprite(spriteMaterial);
-    // Scale up or down as needed
     sprite.scale.set(20, 20, 1);
     return sprite;
   };
@@ -77,19 +81,14 @@ function App() {
     graphRef.current.zoom(8, 1000);
   };
 
-  // Example zoom logic to switch levels
+  // Zoom logic to switch levels
   const handleZoom = (currZoom) => {
     if (!levelsData) return;
-    // If zoom is large, show finer clusters (level 0)
     if (currZoom > 8 && currentLevel !== 0) {
       setCurrentLevel(0);
-    }
-    // If zoom is medium, show next level
-    else if (currZoom > 4 && currentLevel !== 1) {
+    } else if (currZoom > 4 && currentLevel !== 1) {
       setCurrentLevel(1);
-    }
-    // Else show the coarsest level
-    else if (currentLevel !== 2) {
+    } else if (currentLevel !== 2) {
       setCurrentLevel(2);
     }
   };
@@ -102,7 +101,6 @@ function App() {
       </header>
 
       <section className="upload-section">
-        {/* Hidden file input */}
         <input
           type="file"
           id="file-upload"
@@ -113,12 +111,9 @@ function App() {
         <label htmlFor="file-upload" className="custom-file-upload">
           Choose Files
         </label>
-
-        {/* Button to upload/process */}
         <button onClick={handleUpload}>Process/Cluster</button>
       </section>
 
-      {/* Loading spinner if needed */}
       {isLoading && (
         <div className="loading-spinner">
           <div className="spinner"></div>
@@ -126,7 +121,6 @@ function App() {
         </div>
       )}
 
-      {/* Render 3D graph once we have data */}
       {levelsData && (
         <section className="graph-container">
           <ForceGraph3D
@@ -134,7 +128,6 @@ function App() {
             graphData={currentGraph}
             nodeAutoColorBy="cluster"
             nodeThreeObject={nodeThreeObject}
-            // For a tooltip, we can return a simple string:
             nodeLabel={(node) => `${node.filename} (Faces: ${node.faceCount})`}
             linkColor={() => "rgba(255,255,255,0.5)"}
             backgroundColor="#101020"

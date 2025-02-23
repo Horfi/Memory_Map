@@ -86,8 +86,8 @@ def process_images():
         save_path = os.path.join(UPLOAD_FOLDER, unique_filename)
         f.save(save_path)
 
-        # Image will be served by Flask on port 5000
-        image_url = f"http://localhost:5000/uploads/{unique_filename}"
+        # Instead of hardcoding localhost, store only the relative path
+        relative_url = f"/uploads/{unique_filename}"
 
         photo_data.append({
             "id": str(uuid.uuid4()),
@@ -97,7 +97,7 @@ def process_images():
             "lat": lat,
             "lon": lon,
             "faceCount": face_count,
-            "imageUrl": image_url
+            "imageUrl": relative_url
         })
 
     # Cluster

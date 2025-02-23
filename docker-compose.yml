@@ -4,7 +4,7 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: memory_map_backend
+    container_name: memory_map-backend
     volumes:
       - ./backend/uploads:/app/uploads
     ports:
@@ -18,7 +18,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: memory_map_frontend
+    container_name: memory_map-frontend
     ports:
       - "80:80"
     depends_on:
