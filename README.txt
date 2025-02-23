@@ -1,7 +1,10 @@
 Memory map web app written mainly in react and python 
 a website on which u can uploead photos and create a 3d map, that clusters/groups photos based on time, location and ppeople on it 
+  
+  still work in progress 
+  link to the site of what is currently done https://frontend.ashyfield-fca4911b.germanywestcentral.azurecontainerapps.io/
 
-still work in progress 
+
 
   back end
   intsall libraries for backend:
