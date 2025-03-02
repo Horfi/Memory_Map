@@ -49,7 +49,7 @@ docker push memorymapacr.azurecr.io/memory_map-frontend:latest
 
 
 reammeb rto set ingress on backend to poublic visiable and on front end container app set enviroment variable as 
-REACT_APP_API_URL to the url of backend that run on 
+REACT_APP_API_URL to the url of backend that run on .
 
 
 cuz the front end needs ap  to backend we nned to first compose build the contianer so get theimage of both but 
