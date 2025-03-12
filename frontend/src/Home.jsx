@@ -17,8 +17,10 @@ function Home({
   const [status, setStatus] = useState("Idle");
   const [isLoading, setIsLoading] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [highlightedNode, setHighlightedNode] = useState(null);
-  const [highlightLevel, setHighlightLevel] = useState(0); // 0-4 for different highlight styles
+  // Changed from single highlightedNode to a Map tracking all highlighted nodes
+  const [highlightedNodes, setHighlightedNodes] = useState(new Map());
+  // Maximum highlight level constant
+  const MAX_HIGHLIGHT_LEVEL = 7; // Increased number of highlight levels
   const graphRef = useRef();
   const graphContainerRef = useRef();
   const navigate = useNavigate();
@@ -275,6 +277,9 @@ function Home({
       }
       setLevelsData(res.data.levels);
       setStatus("Got cluster data from server!");
+      
+      // Reset highlighted nodes when loading new data
+      setHighlightedNodes(new Map());
     } catch (err) {
       console.error(err);
       setStatus("Upload/Processing failed: " + err.message);
@@ -300,15 +305,26 @@ function Home({
     }
   };
 
-  // Optimized node click handler
+  // Optimized node click handler - completely rewritten to use Map for tracking highlighted nodes
   const handleNodeClick = useCallback(node => {
-    // If clicking the same node, cycle through highlight levels
-    if (highlightedNode === node.id) {
-      setHighlightLevel(prev => (prev + 1) % 5);
-    } else {
-      // If clicking a new node, reset and focus on it
-      setHighlightedNode(node.id);
-      setHighlightLevel(1); // Start with first highlight level
+    setHighlightedNodes(prevHighlighted => {
+      const newHighlighted = new Map(prevHighlighted);
+      
+      // If this node is already highlighted
+      if (newHighlighted.has(node.id)) {
+        const currentLevel = newHighlighted.get(node.id);
+        
+        // If at max level, keep it at max level (don't cycle)
+        if (currentLevel >= MAX_HIGHLIGHT_LEVEL) {
+          // Do nothing - keep at max level
+        } else {
+          // Otherwise increment the highlight level
+          newHighlighted.set(node.id, currentLevel + 1);
+        }
+      } else {
+        // If not highlighted yet, set it to level 1
+        newHighlighted.set(node.id, 1);
+      }
       
       // Load high-res texture for this node with highest priority
       const apiUrl = import.meta.env.VITE_REACT_APP_API_URL || "http://localhost:5000";
@@ -325,7 +341,7 @@ function Home({
         }
       );
       
-      // Camera zoom
+      // Camera zoom to the clicked node
       if (graphRef.current) {
         const distance = 85;
         const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
@@ -343,13 +359,25 @@ function Home({
           controls.enabled = true;
         }, 650);
       }
-    }
-  }, [highlightedNode, queueTextureLoad]);
+      
+      return newHighlighted;
+    });
+  }, [queueTextureLoad, MAX_HIGHLIGHT_LEVEL]);
 
-  // Border colors based on highlight level
+  // Updated border colors with more options
   const getBorderColor = useCallback(level => {
-    const colors = ["#ffffff", "#ff9800", "#ffeb3b", "#4caf50", "#9b5de5"];
-    return colors[level];
+    // Expanded color palette with more distinct colors
+    const colors = [
+      "#ffffff", // Default white
+      "#ff9800", // Orange
+      "#ffeb3b", // Yellow
+      "#4caf50", // Green
+      "#2196f3", // Blue
+      "#9c27b0", // Purple
+      "#e91e63", // Pink
+      "#f44336"  // Red
+    ];
+    return colors[Math.min(level, colors.length - 1)];
   }, []);
 
   // Memoized node object creator function to prevent unnecessary recreations
@@ -357,16 +385,20 @@ function Home({
     const apiUrl = import.meta.env.VITE_REACT_APP_API_URL || "http://localhost:5000";
     const fullImageUrl = new URL(node.imageUrl, apiUrl).href;
     
-    // Determine if this node is highlighted
-    const isHighlighted = node.id === highlightedNode;
-    const level = isHighlighted ? highlightLevel : 0;
+    // Determine if this node is highlighted and at what level
+    const highlightLevel = highlightedNodes.get(node.id) || 0;
     
     // Calculate scale based on highlight level
-    const baseScale = 15; // Slightly smaller base size
-    const scale = level === 0 ? baseScale : Math.min(40, baseScale + level * 4);
+    const baseScale = 15; // Base size
+    const maxScale = 40; // Maximum size
+    
+    // Scale increases with highlight level but tops out at maxScale
+    const scale = highlightLevel === 0 
+      ? baseScale 
+      : Math.min(maxScale, baseScale + highlightLevel * 4);
     
     // Get border color based on highlight level
-    const borderColor = getBorderColor(level);
+    const borderColor = getBorderColor(highlightLevel);
     const borderWidth = 4;
     
     // Create a group to hold all parts
@@ -385,7 +417,7 @@ function Home({
     let texture;
     
     // If node is highlighted, prioritize high-res
-    if (isHighlighted && textureCache.current[fullImageUrl]) {
+    if (highlightLevel > 0 && textureCache.current[fullImageUrl]) {
       texture = textureCache.current[fullImageUrl];
     } 
     // Otherwise try low-res
@@ -393,7 +425,7 @@ function Home({
       texture = lowResTextureCache.current[fullImageUrl];
       
       // If we don't have high-res yet but node is highlighted, load it
-      if (isHighlighted && !textureCache.current[fullImageUrl]) {
+      if (highlightLevel > 0 && !textureCache.current[fullImageUrl]) {
         queueTextureLoad(
           fullImageUrl,
           100,
@@ -411,7 +443,7 @@ function Home({
       texture = placeholderTexture.current;
       
       // Queue loading of appropriate texture based on node status
-      if (isHighlighted) {
+      if (highlightLevel > 0) {
         // Load high-res for highlighted node
         queueTextureLoad(
           fullImageUrl,
@@ -448,7 +480,40 @@ function Home({
     group.add(sprite);
     
     return group;
-  }, [highlightedNode, highlightLevel, getBorderColor, createLowResTexture, queueTextureLoad]);
+  }, [highlightedNodes, getBorderColor, createLowResTexture, queueTextureLoad]);
+
+  // Custom link object to create string-like connections instead of tubes
+  const linkThreeObject = useCallback((link) => {
+    // Create a custom line material for string-like connections
+    const material = new THREE.LineBasicMaterial({
+      color: 0xaaaaaa,
+      transparent: true,
+      opacity: 0.6,
+      linewidth: 1.5 // Note: WebGL has limited support for line width
+    });
+    
+    // Create geometry with curved path
+    const sourceNode = link.source;
+    const targetNode = link.target;
+    
+    // Create curve with slight offset to avoid going through photos
+    const curve = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(sourceNode.x, sourceNode.y, sourceNode.z),
+      new THREE.Vector3(
+        (sourceNode.x + targetNode.x) / 2,
+        (sourceNode.y + targetNode.y) / 2,
+        (sourceNode.z + targetNode.z) / 2 + 10 // Add vertical offset for curve
+      ),
+      new THREE.Vector3(targetNode.x, targetNode.y, targetNode.z)
+    );
+    
+    // Create geometry from curve with enough points for smoothness
+    const points = curve.getPoints(10);
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    
+    // Create the line
+    return new THREE.Line(geometry, material);
+  }, []);
 
   // Memoize graph data to prevent unnecessary rebuilds
   const graphData = useMemo(() => {
@@ -527,6 +592,10 @@ function Home({
             ref={graphRef}
             graphData={graphData}
             nodeThreeObject={nodeThreeObject}
+            linkThreeObject={linkThreeObject}
+            linkPositionUpdate={null} // Disable the default link positioning 
+            linkDirectionalArrowLength={0}
+            linkDirectionalParticles={0}
             nodeAutoColorBy="cluster"
             backgroundColor="#101020"
             onNodeClick={handleNodeClick}
@@ -538,8 +607,8 @@ function Home({
             height={isFullscreen ? window.innerHeight : (graphContainerRef.current?.clientHeight || 500)}
             showNavInfo={false}
             nodeRelSize={4} // Smaller base node size
-            linkWidth={1} // Thinner links
-            linkOpacity={0.5} // More transparent links
+            linkWidth={2} // Thicker links
+            linkOpacity={0.6} // Slightly more opaque links
           />
         </section>
       )}
