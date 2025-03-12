@@ -1,0 +1,133 @@
+.story-card {
+    position: relative;
+    margin: 20px auto;
+    max-width: 800px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    background-color: #fff;
+  }
+  
+  .story-content {
+    position: relative;
+    width: 100%;
+    height: 500px; /* Fixed height for consistency */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background-color: #f8f8f8; /* Light background for image container */
+  }
+  
+  .story-content img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  
+  .image-placeholder {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    color: #666;
+    font-size: 18px;
+    text-align: center;
+    background-color: #eee;
+    padding: 20px;
+  }
+  
+  .story-actions {
+    display: flex;
+    justify-content: space-between;
+    padding: 15px;
+    background-color: #f8f9fa;
+  }
+  
+  /* For rating buttons */
+  .action-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s ease;
+  }
+  
+  .like-btn {
+    background-color: #28a745;
+    color: white;
+  }
+  
+  .like-btn:hover {
+    background-color: #218838;
+  }
+  
+  .dislike-btn {
+    background-color: #dc3545;
+    color: white;
+  }
+  
+  .dislike-btn:hover {
+    background-color: #c82333;
+  }
+  
+  /* For navigation arrows */
+  .arrow-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(255, 255, 255, 0.7);
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 10;
+  }
+  
+  .arrow-btn:hover {
+    background-color: rgba(255, 255, 255, 0.9);
+  }
+  
+  .arrow-btn.left {
+    left: 15px;
+  }
+  
+  .arrow-btn.right {
+    right: 15px;
+  }
+  
+  /* Error state */
+  .story-card.error {
+    height: 300px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #dc3545;
+    font-size: 18px;
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .story-content {
+      height: 350px;
+    }
+    
+    .action-btn {
+      padding: 8px 15px;
+      font-size: 14px;
+    }
+    
+    .arrow-btn {
+      width: 35px;
+      height: 35px;
+      font-size: 16px;
+    }
+  }

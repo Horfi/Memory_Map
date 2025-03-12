@@ -161,3 +161,41 @@ p.status {
     margin: 0 auto;
   }
 }
+
+.disabled-btn {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Animation for swiping in StoryCard */
+@keyframes swipeLeft {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(-100%); opacity: 0; }
+}
+
+@keyframes swipeRight {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+.swiped-left {
+  animation: swipeLeft 0.3s forwards;
+}
+
+.swiped-right {
+  animation: swipeRight 0.3s forwards;
+}
+
+/* Additional responsive styles */
+@media (max-width: 768px) {
+  .upload-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .upload-section button, 
+  .upload-section label.custom-file-upload {
+    margin: 5px 0;
+    width: 100%;
+  }
+}

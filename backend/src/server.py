@@ -9,7 +9,6 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import exifread
 import numpy as np
-import cv2
 from sklearn.cluster import DBSCAN
 import unittest
 
@@ -20,9 +19,6 @@ CORS(app)
 UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
-
-# Load OpenCV face detector
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 def get_decimal_from_dms(dms, ref):
     """
@@ -76,30 +72,13 @@ def date_to_days(dt):
     delta = dt - epoch
     return delta.total_seconds() / 86400.0
 
-def detect_faces_opencv(file_bytes):
-    """
-    Detect faces using OpenCV.
-    Returns the number of detected faces.
-    """
-    img_array = np.frombuffer(file_bytes, dtype=np.uint8)
-    # Suppress stderr to avoid warning messages from cv2.imdecode
-    with open(os.devnull, 'w') as devnull, contextlib.redirect_stderr(devnull):
-        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-    if img is None:
-        return 0
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
-    return len(faces)
-
 @app.route("/process", methods=["POST"])
 def process_images():
     """
     Process multiple images from user-uploaded files and/or prepared photos:
     1. Extract EXIF metadata (date/time and GPS)
-    2. Detect faces
-    3. Cluster based on date, location, and face count
-    4. Return JSON with cluster levels, nodes, and links
+    2. Cluster based on date and location
+    3. Return JSON with cluster levels, nodes, and links
     """
     files = request.files.getlist("photos")
     prep_photos = request.form.getlist("prepPhotos")  # get list of prep photo filenames
@@ -116,7 +95,6 @@ def process_images():
         f.seek(0)
 
         dt_obj, lat, lon = parse_exif(file_bytes)
-        face_count = detect_faces_opencv(file_bytes)
 
         # Save the image to 'uploads' with a unique filename
         unique_filename = f"{uuid.uuid4()}_{f.filename}"
@@ -133,7 +111,6 @@ def process_images():
             "daysSinceEpoch": date_to_days(dt_obj),
             "lat": lat,
             "lon": lon,
-            "faceCount": face_count,
             "imageUrl": relative_url
         })
 
@@ -147,7 +124,6 @@ def process_images():
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
             dt_obj, lat, lon = parse_exif(file_bytes)
-            face_count = detect_faces_opencv(file_bytes)
             # Directly use the prepPhotos route for displaying the image
             relative_url = f"/prepPhotos/{filename}"
             photo_data.append({
@@ -157,13 +133,12 @@ def process_images():
                 "daysSinceEpoch": date_to_days(dt_obj),
                 "lat": lat,
                 "lon": lon,
-                "faceCount": face_count,
                 "imageUrl": relative_url
             })
 
     # Prepare data for clustering
     X = np.array([
-        [p["daysSinceEpoch"], p["lat"], p["lon"], p["faceCount"]]
+        [p["daysSinceEpoch"], p["lat"], p["lon"]]
         for p in photo_data
     ])
 
@@ -184,7 +159,6 @@ def process_images():
                 "id": p["id"],
                 "filename": p["filename"],
                 "cluster": int(labels[i]),
-                "faceCount": p["faceCount"],
                 "dateTime": p["datetime"].isoformat() if p["datetime"] else None,
                 "lat": p["lat"],
                 "lon": p["lon"],
@@ -223,7 +197,7 @@ def uploaded_file(filename):
 
 @app.route("/")
 def hello():
-    return "Backend for Photo Clustering with OpenCV."
+    return "Backend for Photo Clustering."
 
 @app.route("/prep-photos-list", methods=["GET"])
 def list_prep_photos():
@@ -240,6 +214,163 @@ def list_prep_photos():
 def get_prep_photo(filename):
     folder_path = os.path.join(os.getcwd(), "prepPhotos")
     return send_from_directory(folder_path, filename)
+
+@app.route('/api/photos-by-date-range', methods=['GET'])
+def get_photos_by_date_range():
+    """Get photos filtered by date range"""
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    
+    # Convert string dates to datetime objects
+    start = datetime.fromisoformat(start_date.replace('Z', '+00:00')) if start_date else None
+    end = datetime.fromisoformat(end_date.replace('Z', '+00:00')) if end_date else None
+    
+    # Get all processed photo data (assuming you store this somewhere)
+    # This is a placeholder - you'll need to implement based on your data storage
+    all_photos = get_all_processed_photos()  
+    
+    # Filter by date range
+    filtered_photos = []
+    for photo in all_photos:
+        if not photo.get('dateTime'):
+            continue
+            
+        photo_date = datetime.fromisoformat(photo['dateTime'].replace('Z', '+00:00'))
+        if (not start or photo_date >= start) and (not end or photo_date <= end):
+            filtered_photos.append(photo)
+    
+    return jsonify(filtered_photos)
+
+@app.route('/api/user-preferences', methods=['GET', 'POST'])
+def handle_user_preferences():
+    """Get or update user preferences"""
+    if request.method == 'GET':
+        # Load user preferences from a file or database
+        try:
+            with open('user_preferences.json', 'r') as f:
+                preferences = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Default preferences if file doesn't exist or is invalid
+            preferences = {
+                'likedStories': [],
+                'dislikedStories': [],
+                'likedLocations': {},
+                'likedDates': {}
+            }
+        return jsonify(preferences)
+    
+    elif request.method == 'POST':
+        # Update user preferences
+        preferences = request.json
+        
+        # Save to file (or database in a production app)
+        with open('user_preferences.json', 'w') as f:
+            json.dump(preferences, f)
+            
+        return jsonify({'success': True})
+
+@app.route('/api/generate-stories', methods=['POST'])
+def generate_stories():
+    """Generate stories based on filters and preferences"""
+    data = request.json
+    start_date = data.get('startDate')
+    end_date = data.get('endDate')
+    preferences = data.get('preferences', {})
+    
+    # Get photos filtered by date range
+    filtered_photos = []
+    all_photos = get_all_processed_photos()  # You need to implement this
+    
+    for photo in all_photos:
+        if not photo.get('dateTime'):
+            continue
+            
+        photo_date = datetime.fromisoformat(photo['dateTime'].replace('Z', '+00:00'))
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00')) if start_date else None
+        end = datetime.fromisoformat(end_date.replace('Z', '+00:00')) if end_date else None
+        
+        if (not start or photo_date >= start) and (not end or photo_date <= end):
+            filtered_photos.append(photo)
+    
+    # Generate stories based on filtered photos and preferences
+    # This is a placeholder - you'd implement your story generation logic here
+    stories = generate_stories_from_photos(filtered_photos, preferences)
+    
+    return jsonify(stories)
+
+
+# Helper function to get all processed photos
+def get_all_processed_photos():
+    """Get all processed photos from storage"""
+    # This is a placeholder - implement based on how you store processed photos
+    try:
+        with open('processed_photos.json', 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+# Helper function to generate stories from photos
+def generate_stories_from_photos(photos, preferences):
+    """Generate stories based on photos and user preferences"""
+    # Group photos by different criteria
+    stories = []
+    
+    # Group by location
+    location_groups = {}
+    for photo in photos:
+        loc_key = f"{photo.get('lat', 0):.2f},{photo.get('lon', 0):.2f}"
+        if loc_key not in location_groups:
+            location_groups[loc_key] = []
+        location_groups[loc_key].append(photo)
+    
+    # Add location-based stories
+    for loc_key, loc_photos in location_groups.items():
+        if len(loc_photos) >= 3:
+            stories.append({
+                'id': f'location-{loc_key}-{datetime.now().timestamp()}',
+                'title': f'Location {loc_key}',
+                'nodes': loc_photos[:5],
+                'type': 'location'
+            })
+    
+    # Group by date
+    date_groups = {}
+    for photo in photos:
+        if not photo.get('dateTime'):
+            continue
+        
+        date_str = photo['dateTime'].split('T')[0]  # Extract just the date part
+        if date_str not in date_groups:
+            date_groups[date_str] = []
+        date_groups[date_str].append(photo)
+    
+    # Add date-based stories
+    for date_str, date_photos in date_groups.items():
+        if len(date_photos) >= 3:
+            # Format date for display
+            try:
+                date_obj = datetime.fromisoformat(date_str)
+                formatted_date = date_obj.strftime('%B %d, %Y')
+            except:
+                formatted_date = date_str
+                
+            stories.append({
+                'id': f'date-{date_str}-{datetime.now().timestamp()}',
+                'title': f'On {formatted_date}',
+                'nodes': date_photos[:5],
+                'type': 'date'
+            })
+    
+    # Sort stories based on user preferences
+    if preferences:
+        # Default priority for all stories
+        for story in stories:
+            story['priority'] = 0
+        
+        # Sort stories by priority (higher first)
+        stories.sort(key=lambda x: x.get('priority', 0), reverse=True)
+    
+    return stories
 
 # -------------------- Unit Tests --------------------
 
@@ -272,15 +403,10 @@ class TestPhotoProcessing(unittest.TestCase):
         self.assertEqual(lat, 0.0)
         self.assertEqual(lon, 0.0)
 
-    def test_detect_faces_with_invalid_image(self):
-        # Pass invalid image bytes to ensure face detection safely returns 0.
-        result = detect_faces_opencv(b"invalid data")
-        self.assertEqual(result, 0)
-
     def test_real_images(self):
         """
         Load 3 real image files from the uploads folder, extract EXIF data,
-        count faces, and print the results.
+        and print the results.
         """
         images = glob.glob(os.path.join(UPLOAD_FOLDER, "*.jpg"))
         if len(images) < 3:
@@ -289,11 +415,9 @@ class TestPhotoProcessing(unittest.TestCase):
             with open(image_file, 'rb') as f:
                 file_bytes = f.read()
             dt_obj, lat, lon = parse_exif(file_bytes)
-            face_count = detect_faces_opencv(file_bytes)
             print(f"Testing {os.path.basename(image_file)}:")
             print(f"  EXIF DateTime: {dt_obj}")
             print(f"  GPS: lat={lat}, lon={lon}")
-            print(f"  Face Count: {face_count}")
 
 # -------------------- Main --------------------
 if __name__ == "__main__":
