@@ -16,7 +16,7 @@ a website on which u can uploead photos and create a 3d map, that clusters/group
   python server.py
 
 
-  frontend
+  frontend.
 
   to run frontend:
   cd frontend
